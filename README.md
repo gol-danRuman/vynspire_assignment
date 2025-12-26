@@ -9,7 +9,7 @@ A production-ready Retrieval Augmented Generation (RAG) system for document-base
 - **Document Upload**: Support for PDF, TXT, and Markdown files
 - **Intelligent Chunking**: Context-aware text segmentation with overlap
 - **Semantic Search**: Vector-based similarity search using pgvector
-- **AI-Powered Answers**: Natural language responses using Google Gemini
+- **AI-Powered Answers**: Natural language responses using Google Gemini or DeepSeek
 - **Modern UI**: Clean, responsive Next.js interface
 - **Production Ready**: Comprehensive tests, Docker support, and monitoring
 
@@ -20,7 +20,9 @@ A production-ready Retrieval Augmented Generation (RAG) system for document-base
 - Python 3.11+
 - Node.js 18+
 - PostgreSQL 15+ with pgvector extension
-- Google Gemini API key (free tier available)
+- LLM API key (choose one):
+  - Google Gemini API key (free tier available)
+  - DeepSeek API key (recommended, better rate limits)
 
 ### Installation
 
@@ -43,7 +45,10 @@ pip install -r requirements.txt
 
 # Configure environment
 cp .env.example .env
-# Edit .env and add your Gemini API key and database URL
+# Edit .env and configure your LLM provider:
+# - Set LLM_PROVIDER=deepseek (recommended) or gemini
+# - Add your DeepSeek API key or Gemini API key
+# - Update database URL if needed
 ```
 
 3. **Set up PostgreSQL with pgvector**
@@ -140,7 +145,7 @@ Access the application at http://localhost:3000
                             ├─────▶ Sentence Transformers
                             │       (Embeddings)
                             │
-                            └─────▶ Google Gemini
+                            └─────▶ Google Gemini / DeepSeek
                                     (LLM)
 ```
 
@@ -150,7 +155,7 @@ Access the application at http://localhost:3000
 - FastAPI (Python web framework)
 - PostgreSQL + pgvector (vector database)
 - Sentence Transformers (embeddings)
-- Google Gemini API (LLM)
+- Google Gemini or DeepSeek API (LLM)
 - SQLAlchemy (ORM)
 
 **Frontend:**
@@ -164,7 +169,7 @@ Access the application at http://localhost:3000
 1. **Local Embeddings**: Using sentence-transformers for cost-effective, fast embeddings
 2. **Pgvector**: PostgreSQL extension for efficient vector similarity search
 3. **Chunking Strategy**: Context-aware chunking with overlap to preserve meaning
-4. **Free LLM**: Google Gemini free tier for cost-effective answers
+4. **Multiple LLM Providers**: Support for both Google Gemini and DeepSeek APIs
 5. **Modular Architecture**: Clean separation of concerns for maintainability
 
 See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed design documentation.
@@ -179,8 +184,16 @@ Edit `backend/.env`:
 # Database
 DATABASE_URL=postgresql://user:password@localhost:5432/ragdb
 
-# Google Gemini API
-GEMINI_API_KEY=your_api_key_here
+# LLM Provider (choose 'gemini' or 'deepseek')
+LLM_PROVIDER=deepseek
+
+# Google Gemini API (required if LLM_PROVIDER=gemini)
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# DeepSeek API (required if LLM_PROVIDER=deepseek)
+DEEPSEEK_API_KEY=your_deepseek_api_key_here
+DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+DEEPSEEK_MODEL=deepseek-chat
 
 # Document Processing
 CHUNK_SIZE=500              # Characters per chunk
@@ -195,6 +208,30 @@ DEBUG=True
 # CORS
 CORS_ORIGINS=http://localhost:3000
 ```
+
+### Getting Your API Keys
+
+**DeepSeek (Recommended):**
+
+1. Visit <https://platform.deepseek.com/>
+2. Sign up for an account
+3. Go to API Keys section
+4. Create a new API key
+5. Copy the key to your `.env` file
+
+**Google Gemini:**
+
+1. Visit <https://makersuite.google.com/app/apikey>
+2. Sign in with your Google account
+3. Click "Create API Key"
+4. Copy the key to your `.env` file
+
+**Why DeepSeek?**
+
+- Better rate limits for free tier
+- Faster response times
+- More generous quota
+- OpenAI-compatible API
 
 ### Frontend Configuration
 
@@ -351,13 +388,19 @@ psql ragdb -c "SELECT * FROM pg_extension WHERE extname = 'vector';"
 python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')"
 ```
 
-**3. Gemini API errors**
+**3. LLM API errors**
 ```bash
-# Verify API key
+# For Gemini - verify API key
 echo $GEMINI_API_KEY
 
-# Test API access
+# For DeepSeek - verify API key
+echo $DEEPSEEK_API_KEY
+
+# Test Gemini API access
 curl https://generativelanguage.googleapis.com/v1beta/models?key=$GEMINI_API_KEY
+
+# If you hit rate limits with Gemini, switch to DeepSeek:
+# Edit .env and change LLM_PROVIDER=deepseek
 ```
 
 See [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for more solutions.
@@ -382,7 +425,7 @@ This project is licensed under the MIT License - see [LICENSE](LICENSE) for deta
 
 - **Sentence Transformers**: Efficient embedding generation
 - **pgvector**: Vector similarity search in PostgreSQL
-- **Google Gemini**: Free-tier LLM API
+- **Google Gemini & DeepSeek**: Free-tier LLM APIs
 - **FastAPI**: Modern Python web framework
 - **Next.js**: React framework for production
 

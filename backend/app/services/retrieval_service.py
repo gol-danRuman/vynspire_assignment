@@ -29,7 +29,7 @@ class RetrievalService:
         db: Session,
         top_k: int = 5,
         document_id: Optional[int] = None,
-        similarity_threshold: float = 0.3
+        similarity_threshold: float = 0.2
     ) -> List[Dict[str, any]]:
         """
         Retrieve the most relevant document chunks for a query.

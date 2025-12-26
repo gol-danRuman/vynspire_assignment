@@ -1,11 +1,12 @@
 """
-LLM service for generating answers using Google Gemini.
+LLM service for generating answers using Google Gemini or DeepSeek.
 Handles prompt construction and response generation with retrieved context.
 """
 from typing import List, Dict, Optional
 import logging
 
 import google.generativeai as genai
+from openai import OpenAI
 
 from app.core.config import settings
 
@@ -14,33 +15,53 @@ logger = logging.getLogger(__name__)
 
 class LLMService:
     """
-    Service for interacting with Google Gemini LLM.
+    Service for interacting with LLM providers (Google Gemini or DeepSeek).
     Generates contextually grounded answers based on retrieved documents.
     """
 
-    def __init__(self, api_key: str = None):
+    def __init__(self, provider: str = None, api_key: str = None):
         """
-        Initialize LLM service with Gemini API.
+        Initialize LLM service with specified provider.
 
         Args:
-            api_key: Google Gemini API key
+            provider: LLM provider ('gemini' or 'deepseek')
+            api_key: API key for the selected provider
         """
-        self.api_key = api_key or settings.gemini_api_key
-        if not self.api_key:
-            raise ValueError("Gemini API key is required")
+        self.provider = provider or settings.llm_provider
 
-        genai.configure(api_key=self.api_key)
-        self.model = genai.GenerativeModel(settings.gemini_model)
+        if self.provider == "gemini":
+            self.api_key = api_key or settings.gemini_api_key
+            if not self.api_key:
+                raise ValueError("Gemini API key is required")
 
-        # Generation config
-        self.generation_config = {
-            "temperature": settings.temperature,
-            "top_p": 0.95,
-            "top_k": 40,
-            "max_output_tokens": settings.max_tokens,
-        }
+            genai.configure(api_key=self.api_key)
+            self.model = genai.GenerativeModel(settings.gemini_model)
 
-        logger.info(f"LLM service initialized with model: {settings.gemini_model}")
+            # Generation config for Gemini
+            self.generation_config = {
+                "temperature": settings.temperature,
+                "top_p": 0.95,
+                "top_k": 40,
+                "max_output_tokens": settings.max_tokens,
+            }
+
+            logger.info(f"LLM service initialized with Gemini model: {settings.gemini_model}")
+
+        elif self.provider == "deepseek":
+            self.api_key = api_key or settings.deepseek_api_key
+            if not self.api_key:
+                raise ValueError("DeepSeek API key is required")
+
+            self.client = OpenAI(
+                api_key=self.api_key,
+                base_url=settings.deepseek_base_url
+            )
+            self.model_name = settings.deepseek_model
+
+            logger.info(f"LLM service initialized with DeepSeek model: {settings.deepseek_model}")
+
+        else:
+            raise ValueError(f"Unsupported LLM provider: {self.provider}. Use 'gemini' or 'deepseek'.")
 
     def generate_answer(
         self,
@@ -73,14 +94,41 @@ class LLMService:
             # Construct prompt with context
             prompt = self._construct_prompt(question, context_chunks, conversation_history)
 
-            # Generate response
             logger.info(f"Generating answer for question: {question[:100]}...")
-            response = self.model.generate_content(
-                prompt,
-                generation_config=self.generation_config
-            )
 
-            answer = response.text.strip()
+            if self.provider == "gemini":
+                # Generate response using Gemini
+                response = self.model.generate_content(
+                    prompt,
+                    generation_config=self.generation_config
+                )
+
+                # Extract text from response (handle different API versions)
+                if hasattr(response, 'text'):
+                    try:
+                        answer = response.text.strip()
+                    except ValueError:
+                        # If response.text fails, use parts accessor
+                        answer = response.candidates[0].content.parts[0].text.strip()
+                else:
+                    answer = response.candidates[0].content.parts[0].text.strip()
+
+            elif self.provider == "deepseek":
+                # Generate response using DeepSeek (OpenAI-compatible)
+                response = self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=[
+                        {"role": "system", "content": "You are a helpful assistant that answers questions based on provided context."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    temperature=settings.temperature,
+                    max_tokens=settings.max_tokens
+                )
+                answer = response.choices[0].message.content.strip()
+
+            else:
+                raise ValueError(f"Unsupported provider: {self.provider}")
+
             logger.info(f"Answer generated successfully (length: {len(answer)})")
 
             return answer
@@ -170,20 +218,44 @@ class LLMService:
 
     def check_api_status(self) -> bool:
         """
-        Check if the Gemini API is accessible and working.
+        Check if the LLM API is accessible and working.
 
         Returns:
             bool: True if API is working, False otherwise
         """
         try:
-            # Simple test generation
-            test_response = self.model.generate_content(
-                "Say 'OK' if you can read this.",
-                generation_config={"max_output_tokens": 10}
-            )
-            return bool(test_response.text)
+            if self.provider == "gemini":
+                # Simple test generation for Gemini
+                test_response = self.model.generate_content(
+                    "Say 'OK' if you can read this.",
+                    generation_config={"max_output_tokens": 10}
+                )
+                # Try different ways to access the response
+                try:
+                    # Try the simple accessor first
+                    text = test_response.text
+                    return bool(text)
+                except (ValueError, AttributeError):
+                    # Fall back to parts accessor
+                    if hasattr(test_response, 'candidates') and test_response.candidates:
+                        parts = test_response.candidates[0].content.parts
+                        return bool(parts and len(parts) > 0)
+                    return False
+
+            elif self.provider == "deepseek":
+                # Simple test generation for DeepSeek
+                response = self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=[{"role": "user", "content": "Say 'OK' if you can read this."}],
+                    max_tokens=10
+                )
+                return bool(response.choices[0].message.content)
+
+            else:
+                return False
+
         except Exception as e:
-            logger.error(f"Gemini API check failed: {e}")
+            logger.error(f"{self.provider.upper()} API check failed: {e}")
             return False
 
 
